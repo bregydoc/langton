@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func isqrt(number uint) uint {
+func isqrt(number uint) uint { // above giant shoulders
 	root := uint(1)
 	next := (root + number/root) >> 1
 	overflow := 100
