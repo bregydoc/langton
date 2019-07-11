@@ -1,177 +1,107 @@
-package main
+package langton
 
-import (
-	"encoding/base64"
-	"fmt"
-	"math"
-	"strings"
-)
+import "fmt"
 
-type ant struct {
-	x int
-	y int
-	o int // 0, 1, 2, 3 => N, E, S, W
+type Langton struct {
+	Ant   *AntDescriptor
+	State [][]byte
 }
 
-func countBits(info []byte) int {
-	return 4 * len(info)
-}
-
-func printState(state [][]int) {
-	w := len(state)
-	h := len(state[0])
-
-	for i := 0; i < w; i++ {
-		for j := 0; j < h; j++ {
-			s := state[i][j]
-			fmt.Print(s, " ")
-		}
-		fmt.Println("")
+func NewLangton(info []byte) *Langton {
+	s := dataToState(info)
+	return &Langton{
+		State: s,
+		Ant: &AntDescriptor{
+			x: len(s) / 2,
+			y: len(s) / 2,
+			o: 0,
+		},
 	}
-	fmt.Println(strings.Repeat("-", w*2))
 }
 
-func performLangton(initialState [][]int, a *ant, steps int) [][]int {
-	w := len(initialState)
-	h := len(initialState[0])
+func (l *Langton) encode(steps int) error {
+	n := 0
+	for n < steps {
+		if err := l.Ant.fixPosition(l.State); err != nil {
+			return err
+		}
 
-	for i := 0; i < steps; i++ {
-		if initialState[a.x][a.y] == 0 {
-			a.o = a.o - 1
-			if a.o < 0 {
-				a.o = 3
+		x, y := l.Ant.getPosition()
+
+		if l.State[x][y] == 0 {
+			l.Ant.o = l.Ant.o - 1
+			if l.Ant.o < 0 {
+				l.Ant.o = 3
 			}
-			initialState[a.x][a.y] = 1
+			l.State[x][y] = 1
 		} else {
-			a.o = a.o + 1
-			if a.o > 3 {
-				a.o = 0
+			l.Ant.o = l.Ant.o + 1
+			if l.Ant.o > 3 {
+				l.Ant.o = 0
 			}
-			initialState[a.x][a.y] = 0
+			l.State[x][y] = 0
 		}
 
-		if a.o == 0 {
-			a.y--
-		} else if a.o == 1 {
-			a.x++
-		} else if a.o == 2 {
-			a.y++
-		} else if a.o == 3 {
-			a.x--
-		}
-
-		if a.x < 0 {
-			a.x = w - 1
-		}
-
-		if a.y < 0 {
-			a.y = h - 1
-		}
-
-		if a.x >= w {
-			a.x = 0
-		}
-
-		if a.y >= h {
-			a.y = 0
-		}
+		l.Ant.x, l.Ant.y = l.Ant.getNextPosition()
+		n++
 	}
 
-	return initialState
+	return nil
 }
 
-func diff(a [][]int, b [][]int) int {
-	w := len(a)
-	h := len(a[0])
+func (l *Langton) decode(steps int) error {
+	n := 0
+	for n < steps {
+		if err := l.Ant.fixPosition(l.State); err != nil {
+			return err
+		}
 
-	totalDiffs := 0
+		x, y := l.Ant.getPosition()
 
-	for i := 0; i < w; i++ {
-		for j := 0; j < h; j++ {
-			if a[i][j]-b[i][j] != 0 {
-				totalDiffs++
+		if l.State[x][y] == 0 {
+			l.Ant.o = l.Ant.o - 1
+			if l.Ant.o < 0 {
+				l.Ant.o = 3
 			}
-		}
-	}
-
-	return totalDiffs
-}
-
-func newAntFromInfo(info []byte) *ant {
-	bits := countBits(info)
-	d := int(math.Ceil(math.Sqrt(float64(bits))))
-	dx, dy := d, d
-	return &ant{
-		x: dx / 2,
-		y: dy / 2,
-	}
-}
-
-func infoToState(inf []byte) [][]int {
-	bits := countBits(inf)
-	d := int(math.Ceil(math.Sqrt(float64(bits))))
-	dx, dy := d, d
-	s := make([][]int, dy)
-	for i := range s {
-		s[i] = make([]int, dx)
-	}
-	for i := 0; i < dy; i++ {
-		for j := 0; j < dx; j++ {
-			if inf[i]&(1<<uint(j)) != 0 {
-				s[i][j] = 1
+			l.State[x][y] = 1
+		} else {
+			l.Ant.o = l.Ant.o + 1
+			if l.Ant.o > 3 {
+				l.Ant.o = 0
 			}
-
+			l.State[x][y] = 0
 		}
+
+		l.Ant.x, l.Ant.y = l.Ant.getPastPosition()
+		n++
 	}
 
-	return s
+	return nil
 }
 
-func stateToInfo(state [][]int) []byte {
+func (l *Langton) Exec() {
+	data, _ := stateToData(l.State)
 
-	w := len(state)
-	h := len(state[0])
+	fmt.Printf("ant: x:%d, y:%d, o:%d\n", l.Ant.x, l.Ant.y, l.Ant.o)
+	fmt.Println(string(data))
+	printState(l.State)
 
-	info := make([]byte, 0)
-	for i := 0; i < w; i++ {
-		var b byte
-		for j := 0; j < h; j++ {
-			if state[i][j] == 1 {
-				b += 1 << uint(j)
-			}
-		}
-		info = append(info, b)
+	if err := l.encode(1); err != nil {
+		panic(err)
 	}
 
-	return info
-}
+	data, _ = stateToData(l.State)
 
-func main() {
-	information := "bregy malpartida ramos asiduasijdndnjaksdjnaskjndjkas"
-	inf := []byte(information)
+	fmt.Printf("ant: x:%d, y:%d, o:%d\n", l.Ant.x, l.Ant.y, l.Ant.o)
+	fmt.Println(string(data))
+	printState(l.State)
 
-	s := infoToState(inf)
-
-	a := newAntFromInfo(inf)
-	printState(s)
-	for step := 0; step < 100000; step++ {
-		oldS := make([][]int, len(s))
-		for i := range s {
-			oldS[i] = make([]int, len(s[i]))
-			copy(oldS[i], s[i])
-		}
-
-		s = performLangton(s, a, 1)
-
-		// printState(oldS)
-		// printState(s)
-		// fmt.Println(diff(oldS, s))
+	if err := l.decode(1); err != nil {
+		panic(err)
 	}
-	printState(s)
 
-	final := base64.StdEncoding.EncodeToString(stateToInfo(s))
-	fmt.Println(final)
-
-	data, _ := base64.StdEncoding.DecodeString(final)
-	fmt.Println(data)
+	data, _ = stateToData(l.State)
+	fmt.Printf("ant: x:%d, y:%d, o:%d\n", l.Ant.x, l.Ant.y, l.Ant.o)
+	fmt.Println(string(data))
+	printState(l.State)
 }
